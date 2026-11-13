@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Misión Espacial 1962 | Simulación de Ascenso de Cohete (Método de Euler)</title>
+  <link rel="stylesheet" href="style.css">
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+  <header class="hero">
+    <div class="container hero-content">
+      <div class="badge">Misión Mercury-Atlas 6 • 1962</div>
+      <h1>Simulación de Ascenso de Cohete</h1>
+      <p class="subtitle">
+        Cálculo numérico de trayectoria vertical mediante el <strong>Método de Euler</strong>, <strong>Heun</strong> y <strong>Runge-Kutta 4 (RK4)</strong> frente a la <strong>Solución Analítica</strong>.
+      </p>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Configuración y Parámetros -->
+    <section class="card config-section">
+      <div class="section-title">
+        <h2>Parámetros del Vuelo</h2>
+        <span class="tag">Condiciones Iniciales</span>
+      </div>
+
+      <form id="sim-form" class="form-grid">
+        <div class="input-group">
+          <label for="mass">Masa del cohete ($m$ en kg)</label>
+          <input type="number" id="mass" value="1000" min="0.001" step="any" required>
+          <small>Masa constante asumida</small>
+        </div>
+
+        <div class="input-group">
+          <label for="thrust">Empuje del motor ($T$ en N)</label>
+          <input type="number" id="thrust" value="15000" min="0" step="any" required>
+          <small>Fuerza vertical propulsora</small>
+        </div>
+
+        <div class="input-group">
+          <label for="gravity">Aceleración gravitacional ($g$ en m/s²)</label>
+          <input type="number" id="gravity" value="9.81" min="0" step="any" required>
+          <small>Gravedad terrestre constante</small>
+        </div>
+
+        <div class="input-group">
+          <label for="drag">Coeficiente aerodinámico ($k$ en kg/s)</label>
+          <input type="number" id="drag" value="100" min="0" step="any" required>
+          <small>Resistencia lineal $F_r = kv$</small>
+        </div>
+
+        <div class="input-group">
+          <label for="v0">Velocidad inicial ($v_0$ en m/s)</label>
+          <input type="number" id="v0" value="0" step="any" required>
+          <small>Partida desde el reposo</small>
+        </div>
+
+        <div class="input-group">
+          <label for="y0">Altura inicial ($y_0$ en m)</label>
+          <input type="number" id="y0" value="0" step="any" required>
+          <small>Plataforma de lanzamiento</small>
+        </div>
+
+        <div class="input-group">
+          <label for="tfinal">Tiempo de simulación ($t_f$ en s)</label>
+          <input type="number" id="tfinal" value="20" min="0.1" step="any" required>
+          <small>Duración del ascenso</small>
+        </div>
+
+        <div class="input-group">
+          <label for="step">Paso temporal ($h$ en s)</label>
+          <input type="number" id="step" value="2" min="0.0001" step="any" required>
+          <small>Intervalo de discretización</small>
+        </div>
+
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary" id="btn-run">Simular Trayectoria</button>
+          <div class="preset-buttons">
+            <span class="preset-label">Pasos rápidos:</span>
+            <button type="button" class="btn-chip" data-h="2">h = 2 s</button>
+            <button type="button" class="btn-chip" data-h="1">h = 1 s</button>
+            <button type="button" class="btn-chip" data-h="0.5">h = 0.5 s</button>
+            <button type="button" class="btn-chip" data-h="0.25">h = 0.25 s</button>
+          </div>
+        </div>
+      </form>
+      <div id="error-msg" class="error-banner" style="display: none;"></div>
+    </section>
+
+    <!-- Resumen de Resultados a t_final -->
+    <section class="results-summary">
+      <div class="card stat-card">
+        <h3>Velocidad Final ($t = 20\text{ s}$)</h3>
+        <div class="stat-value" id="stat-vf-euler">-- m/s</div>
+        <div class="stat-meta">
+          <span>Analítica: <strong id="stat-vf-exact">-- m/s</strong></span>
+          <span>Error Euler: <strong id="stat-vf-err" class="highlight-err">--</strong></span>
+        </div>
+      </div>
+
+      <div class="card stat-card">
+        <h3>Altura Final ($t = 20\text{ s}$)</h3>
+        <div class="stat-value" id="stat-yf-euler">-- m</div>
+        <div class="stat-meta">
+          <span>Analítica: <strong id="stat-yf-exact">-- m</strong></span>
+          <span>Error Euler: <strong id="stat-yf-err" class="highlight-err">--</strong></span>
+        </div>
+      </div>
+
+      <div class="card stat-card">
+        <h3>Velocidad Terminal Teórica</h3>
+        <div class="stat-value" id="stat-vterm">-- m/s</div>
+        <div class="stat-meta">
+          <span>Ecuación: $v_\infty = \frac{T - mg}{k}$</span>
+          <span id="stat-pct-term">--% de $v_\infty$ alcanzada</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Gráficas -->
+    <section class="charts-grid">
+      <div class="card chart-card">
+        <div class="chart-header">
+          <h3>Velocidad vs Tiempo</h3>
+          <span class="badge-sm">m/s</span>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="chart-velocity"></canvas>
+        </div>
+      </div>
+
+      <div class="card chart-card">
+        <div class="chart-header">
+          <h3>Altura vs Tiempo</h3>
+          <span class="badge-sm">m</span>
+        </div>
+        <div class="chart-wrapper">
+          <canvas id="chart-height"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Comparación de Métodos Avanzados (Parte C) -->
+    <section class="card comparison-card">
+      <div class="section-title">
+        <h2>Parte C: Comparación de Métodos Numéricos ($t = t_f$)</h2>
+        <span class="tag">Euler vs Heun vs RK4</span>
+      </div>
+      <div class="table-responsive">
+        <table class="data-table" id="methods-summary-table">
+          <thead>
+            <tr>
+              <th>Método</th>
+              <th>Orden</th>
+              <th>Velocidad (m/s)</th>
+              <th>Error Vel. (m/s)</th>
+              <th>Altura (m)</th>
+              <th>Error Alt. (m)</th>
+            </tr>
+          </thead>
+          <tbody id="methods-summary-body">
+            <!-- Inyectado por JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Tabla Detallada de Euler y Solución Analítica -->
+    <section class="card table-card">
+      <div class="section-title-between">
+        <div>
+          <h2>Tabla de Resultados Detallada</h2>
+          <p class="subtitle-sm">Paso a paso de Euler frente a la Solución Analítica</p>
+        </div>
+        <button class="btn btn-outline" id="btn-export-csv">Exportar a CSV</button>
+      </div>
+      <div class="table-responsive max-h-table">
+        <table class="data-table" id="results-table">
+          <thead>
+            <tr>
+              <th>Tiempo $t$ (s)</th>
+              <th>$v_{\text{Euler}}$ (m/s)</th>
+              <th>$v_{\text{Analítica}}$ (m/s)</th>
+              <th>Error Abs. $v$ (m/s)</th>
+              <th>$y_{\text{Euler}}$ (m)</th>
+              <th>$y_{\text{Analítica}}$ (m)</th>
+              <th>Error Abs. $y$ (m)</th>
+            </tr>
+          </thead>
+          <tbody id="results-body">
+            <!-- Inyectado por JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Respuestas de la Parte D (Preguntas de Interpretación y Reflexión) -->
+    <section class="card part-d-card">
+      <div class="section-title">
+        <h2>Parte D: Preguntas de Interpretación y Reflexión</h2>
+        <span class="tag">Respuestas Breves y Simplificadas</span>
+      </div>
+      <div class="qa-grid">
+        <div class="qa-item">
+          <h4>1. ¿Por qué era importante verificar cálculos de trayectoria antes de una misión tripulada?</h4>
+          <p>Porque la vida de los astronautas dependía de ello: cualquier desviación de órbita o de ángulo en la reentrada provocaría que la cápsula se destruyera o se perdiera en el espacio.</p>
+        </div>
+
+        <div class="qa-item">
+          <h4>2. ¿Qué riesgos numéricos puede producir un paso demasiado grande?</h4>
+          <p>Produce gran pérdida de precisión, acumulación severa de errores y puede volver el método inestable, arrojando resultados absurdos o divergentes.</p>
+        </div>
+
+        <div class="qa-item">
+          <h4>3. ¿Por qué una aproximación aparentemente razonable puede acumular errores?</h4>
+          <p>Porque Euler asume derivadas constantes durante todo el paso; al usar el valor del punto anterior para calcular el siguiente, el error se arrastra y crece en cada iteración.</p>
+        </div>
+
+        <div class="qa-item">
+          <h4>4. ¿Qué fenómenos reales no contempla el modelo?</h4>
+          <p>No contempla la pérdida de masa por quemado de combustible, el empuje variable, la disminución del aire con la altura, el viento ni el movimiento en 2D/3D con curvatura terrestre.</p>
+        </div>
+
+        <div class="qa-item">
+          <h4>5. ¿Por qué una trayectoria orbital o lunar requiere modelos más complejos?</h4>
+          <p>Porque entran en juego la gravedad variable en 3D de varios cuerpos celestes (Tierra, Luna, Sol), la rotación terrestre, la relatividad y trayectorias curvas en el espacio.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Guion para el Video de 2 Minutos -->
+    <section class="card video-script-card">
+      <div class="section-title">
+        <h2>Guion Recomendado para Video Explicativo (Máx. 2 Minutos)</h2>
+        <span class="tag">Entregable Audiovisual</span>
+      </div>
+      <div class="script-content">
+        <div class="script-step">
+          <strong>0:00 - 0:25 | Introducción y Contexto:</strong>
+          <p>"Hola, en este proyecto simulamos el ascenso vertical de un cohete aplicando la 2.ª Ley de Newton y el Método de Euler, inspirado en los cálculos manuales de Katherine Johnson en la misión Mercury de 1962."</p>
+        </div>
+        <div class="script-step">
+          <strong>0:25 - 0:55 | Modelo Matemático y Métodos:</strong>
+          <p>"De la sumatoria de fuerzas obtenemos $dv/dt = 5.19 - 0.1v$ y $dy/dt = v$. Resolvemos analíticamente por separación de variables y aplicamos Euler con paso $h=2$ s, además de Heun y RK4 para comparar precisión."</p>
+        </div>
+        <div class="script-step">
+          <strong>0:55 - 1:35 | Demostración de la Aplicación Web:</strong>
+          <p><em>(Muestra la pantalla interactuando con los botones de paso $h=2, 1, 0.5, 0.25$ s)</em>: "Aquí vemos cómo con $h=2$ s Euler tiene un error de 1.45 m/s en velocidad y 14.51 m en altura a los 20 s. Al reducir el paso a $0.25$ s, el error cae drásticamente. Y al comparar con RK4, el error es casi nulo (orden 4)."</p>
+        </div>
+        <div class="script-step">
+          <strong>1:35 - 2:00 | Conclusión:</strong>
+          <p>"El tamaño del paso define el equilibrio entre costo computacional y precisión. Verificar rigurosamente cada cálculo era y sigue siendo vital para la seguridad espacial. ¡Muchas gracias!"</p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-content">
+      <p>Desafío de Métodos Numéricos • Universidad / Misión Espacial 1962</p>
+      <p>Desarrollado para evaluación académica • Inspirado en <em>Hidden Figures</em></p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
